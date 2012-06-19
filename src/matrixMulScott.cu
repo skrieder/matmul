@@ -215,11 +215,11 @@ int main(int argc, char** argv)
 
 
     // copy result from device to host
-    cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost);
+    //cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost);
 
     // compute reference solution    
-    float* reference = (float*)malloc(mem_size_C);
-    computeGold(reference, h_A, h_B, uiHA, uiWA, uiWB);
+    //float* reference = (float*)malloc(mem_size_C);
+    //computeGold(reference, h_A, h_B, uiHA, uiWA, uiWB);
 
     // check result (matrixMul)
     // printf("Comparing CUDA matrixMul & Host results\n");
