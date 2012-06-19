@@ -29,6 +29,7 @@
 // Utilities and system includes
 #include <stdio.h>
 #include <cuda_runtime.h>
+#include <sys/time.h>
 
 #include "matrixMul.h"
 
@@ -111,7 +112,8 @@ matrixMul( float* C, float* A, float* B, int wA, int wB)
 //    END OF KERNEL
 ////////////////////////////////////////////////////////////////////////////////
 
-
+struct timeval tp;
+double getTime_sec();
 void runTest(int argc, char** argv);
 void randomInit(float*, int);
 void printDiff(float*, float*, int, int, int, float);
@@ -214,7 +216,7 @@ int main(int argc, char** argv)
     }
     cudaDeviceSynchronize();
 
-    // Add timing stuff later
+    double start_time = getTime_sec();
 
     for (int j = 0; j < nIter; j++) {
         if (block_size == 16) {
@@ -227,10 +229,18 @@ int main(int argc, char** argv)
 
     cudaDeviceSynchronize();
     // calculate timing stuff
-    printf("timing is currently disabled, sorry Scott\n\n");
-    //double dSeconds = sdkGetTimerValue(&timer_matrixMul)/((double)nIter * 1000.0);
-    //double dNumOps = 2.0 * (double)uiWA * (double)uiHA * (double)uiWB;
-    //double gflops = 1.0e-9 * dNumOps/dSeconds;
+    double finish_time = getTime_sec();
+
+    double total_sec = finish_time-start_time;
+    double dSeconds = total_sec/((double)nIter);
+    double dNumOps = 2.0 * (double)uiWA * (double)uiHA * (double)uiWB;
+    double gflops = 1.0e-9 * dNumOps/dSeconds;
+
+    printf("Time Informarion:\n");
+    printf("   Total Time:   %.6f sec\n", total_sec);
+    printf("   Time Per Run: %.6f sec\n", dSeconds);
+    printf("   Gflops:       %.2f G Ops/sec\n\n", gflops);
+
 
     // copy result from device to host
     cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost);
@@ -260,6 +270,12 @@ int main(int argc, char** argv)
     cudaDeviceReset();
 }
 
+
+double getTime_sec() {
+   gettimeofday(&tp, NULL);
+   return static_cast<double>(tp.tv_sec)
+           + static_cast<double>(tp.tv_usec) / 1E6;
+}
 
 // Allocates a matrix with random float entries.
 void randomInit(float* data, int size)
