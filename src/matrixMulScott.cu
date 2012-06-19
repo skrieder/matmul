@@ -222,13 +222,13 @@ int main(int argc, char** argv)
     computeGold(reference, h_A, h_B, uiHA, uiWA, uiWB);
 
     // check result (matrixMul)
-    printf("Comparing CUDA matrixMul & Host results\n");
-    bool resCUDA = check(reference, h_C, size_C, 1.0e-6f); //not sure if I can use this
-    if (resCUDA != true) 
-    {
-        printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-3f);
-    }
-    printf("CUDA matrixMul compares %s\n\n", (true == resCUDA) ? "OK" : "FAIL");
+    // printf("Comparing CUDA matrixMul & Host results\n");
+    // bool resCUDA = check(reference, h_C, size_C, 1.0e-6f); //not sure if I can use this
+    // if (resCUDA != true) 
+    //{
+    //    printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-3f);
+    // }
+    // printf("CUDA matrixMul compares %s\n\n", (true == resCUDA) ? "OK" : "FAIL");
 
     // clean up memory
     free(h_A);
