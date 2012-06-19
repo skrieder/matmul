@@ -234,7 +234,7 @@ int main(int argc, char** argv)
     free(h_A);
     free(h_B);
     free(h_C);
-    free(reference);
+    //    free(reference);
     cudaFree(d_A);
     cudaFree(d_B);
     cudaFree(d_C);
