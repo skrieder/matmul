@@ -1,30 +1,8 @@
-/*
- * Copyright 1993-2010 NVIDIA Corporation.  All rights reserved.
- *
- * Please refer to the NVIDIA end user license agreement (EULA) associated
- * with this source code for terms and conditions that govern your use of
- * this software. Any use, reproduction, disclosure, or distribution of
- * this software and related documentation outside the terms of the EULA
- * is strictly prohibited.
- *
- */
 
-/* Matrix multiplication: C = A * B.
- * Host code.
- *
- * This sample implements matrix multiplication as described in Chapter 3
- * of the programming guide.
- * It has been written for clarity of exposition to illustrate various CUDA
- * programming principles, not with the goal of providing the most
- * performant generic kernel for matrix multiplication.
- *
- * CUBLAS provides high-performance matrix multiplication.
- * See also:
- * V. Volkov and J. Demmel, "Benchmarking GPUs to tune dense linear algebra,"
- * in Proc. 2008 ACM/IEEE Conf. on Superconducting (SC '08),
- * Piscataway, NJ: IEEE Press, 2008, pp. Art. 31:1-11. 
- *
- */
+
+//This takes command line arguements for:
+//     number of runs
+//     matrix side length
 
 // Utilities and system includes
 #include <stdio.h>
@@ -143,26 +121,23 @@ int main(int argc, char** argv)
 	// set seed for rand()
     srand(2006);
 
-    // Optional Command-line multiplier for matrix sizes
-    unsigned int uiWA, uiHA, uiWB, uiHB, uiWC, uiHC;
-    int iSizeMultiple = 5;
 
-	// For GPUs with fewer # of SM's, we limit the maximum size of the matrix
-    if (deviceProp.multiProcessorCount <= 4) {
-	uiWA = 2 * block_size * iSizeMultiple;
-	uiHA = 4 * block_size * iSizeMultiple;
-	uiWB = 2 * block_size * iSizeMultiple;
-	uiHB = 4 * block_size * iSizeMultiple;
-	uiWC = 2 * block_size * iSizeMultiple;
-	uiHC = 4 * block_size * iSizeMultiple;
-    } else {
-	uiWA = WA * iSizeMultiple;
-	uiHA = HA * iSizeMultiple;
-	uiWB = WB * iSizeMultiple;
-	uiHB = HB * iSizeMultiple;
-	uiWC = WC * iSizeMultiple;
-	uiHC = HC * iSizeMultiple;
+    //Get command line arguements
+    int nIter = 30;
+    int size = 640;
+    if( argc>2 ){
+        nIter = atoi(argv[1]);
+        size = atoi(argv[2]);
     }
+
+    unsigned int uiWA, uiHA, uiWB, uiHB, uiWC, uiHC;
+    uiWA = size;
+    uiHA = size;
+    uiWB = size;
+    uiHB = size;
+    uiWC = size;
+    uiHC = size;
+    
 
     // allocate host memory for matrices A and B
     unsigned int size_A = uiWA * uiHA;
@@ -197,9 +172,6 @@ int main(int argc, char** argv)
     // setup execution parameters
     dim3 threads(block_size, block_size);
     dim3 grid(uiWC / threads.x, uiHC / threads.y);
-
-    // execute the kernel
-    int nIter = 30;
 
     //Print information about test
     printf("Calculating: C = A x B, %d times\n", nIter);
@@ -254,7 +226,7 @@ int main(int argc, char** argv)
     bool resCUDA = check(reference, h_C, size_C, 1.0e-6f); //not sure if I can use this
     if (resCUDA != true) 
     {
-        printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-4f);
+        printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-3f);
     }
     printf("CUDA matrixMul compares %s\n\n", (true == resCUDA) ? "OK" : "FAIL");
 
