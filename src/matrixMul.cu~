@@ -18,6 +18,7 @@
 template <int BLOCK_SIZE> __global__ void
 matrixMul( float* C, float* A, float* B, int wA, int wB)
 {
+    int c = wB * BLOCK_SIZE * by + BLOCK_SIZE * bx;
     // Block index
     int bx = blockIdx.x;
     int by = blockIdx.y;
@@ -83,7 +84,6 @@ matrixMul( float* C, float* A, float* B, int wA, int wB)
 
     // Write the block sub-matrix to device memory;
     // each thread writes one element
-    int c = wB * BLOCK_SIZE * by + BLOCK_SIZE * bx;
     C[c + wB * ty + tx] = Csub;
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -226,7 +226,7 @@ int main(int argc, char** argv)
     bool resCUDA = check(reference, h_C, size_C, 1.0e-6f); //not sure if I can use this
     if (resCUDA != true) 
     {
-        printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-3f);
+        printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-4f);
     }
     printf("CUDA matrixMul compares %s\n\n", (true == resCUDA) ? "OK" : "FAIL");
 
@@ -289,7 +289,7 @@ void printDiff(float *data1, float *data2, int width, int height, int iListLengt
     {
         if (error_count < iListLength)
         {
-            //printf("\n  Row %d:\n", j);
+            printf("\n  Row %d:\n", j);
         }
         for (i = 0; i < width; i++) 
         {
@@ -299,7 +299,7 @@ void printDiff(float *data1, float *data2, int width, int height, int iListLengt
             {                
                 if (error_count < iListLength)
                 {
-                    //printf("    Loc(%d,%d)\tCPU=%.5f\tGPU=%.5f\tDiff=%.6f\n", i, j, data1[k], data2[k], fDiff);
+                    printf("    Loc(%d,%d)\tCPU=%.5f\tGPU=%.5f\tDiff=%.6f\n", i, j, data1[k], data2[k], fDiff);
                 }
                 error_count++;
             }

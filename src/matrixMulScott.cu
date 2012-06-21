@@ -116,8 +116,6 @@ int main(int argc, char** argv)
     // use a larger block size for Fermi and above
     int block_size = (deviceProp.major < 2) ? 16 : 32;
 
-    printf("Device %d: \"%s\" with Compute %d.%d capability\n\n", cuda_device, deviceProp.name, deviceProp.major, deviceProp.minor);
-
 	// set seed for rand()
     srand(2006);
 
@@ -175,10 +173,7 @@ int main(int argc, char** argv)
 
     //Print information about test
     printf("Calculating: C = A x B, %d times\n", nIter);
-    printf("Matrix A is :  %d x %d\n", uiWA, uiHA);
-    printf("Matrix B is :  %d x %d\n", uiWB, uiHB);
-    printf("Matrix C is :  %d x %d\n\n", uiWC, uiHC);
-
+    printf("Matrix size is :  %d x %d\n\n", uiWA, uiHA);
 
     //Performs warmup operation using matrixMul CUDA kernel
     if (block_size == 16) {
@@ -199,7 +194,16 @@ int main(int argc, char** argv)
     }
     // check if kernel execution generated and error
 
-    cudaDeviceSynchronize();
+    cudaError cuda_error = cudaDeviceSynchronize();
+
+    if(cuda_error==cudaSuccess){
+        //printf( "  Running the concurrentKernels was a success\n");
+    }else{
+        printf("CUDA Error: %s\n", cudaGetErrorString(cuda_error));
+        
+        return 1;
+    }
+
     // calculate timing stuff
     double finish_time = getTime_sec();
 
@@ -210,8 +214,7 @@ int main(int argc, char** argv)
 
     printf("Time Informarion:\n");
     printf("   Total Time:   %.6f sec\n", total_sec);
-    printf("   Time Per Run: %.6f sec\n", dSeconds);
-    printf("   Gflops:       %.2f G Ops/sec\n\n", gflops);
+    printf("   Gflops:       %.2f G Ops/sec\n\n\n", gflops);
 
 
     // copy result from device to host
