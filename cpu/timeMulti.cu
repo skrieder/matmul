@@ -107,17 +107,6 @@ void computeGold(float*, const float*, const float*, unsigned int, unsigned int,
 
 int main(int argc, char** argv)
 {
-    int cuda_device;
-    cudaDeviceProp deviceProp;
-
-    cudaGetDevice(&cuda_device);	
-    cudaGetDeviceProperties(&deviceProp, cuda_device);
-
-    // use a larger block size for Fermi and above
-    int block_size = (deviceProp.major < 2) ? 16 : 32;
-
-    printf("Device %d: \"%s\" with Compute %d.%d capability\n\n", cuda_device, deviceProp.name, deviceProp.major, deviceProp.minor);
-
 	// set seed for rand()
     srand(2006);
 
@@ -143,66 +132,32 @@ int main(int argc, char** argv)
     unsigned int size_A = uiWA * uiHA;
     unsigned int mem_size_A = sizeof(float) * size_A;
     float* h_A = (float*)malloc(mem_size_A);
-    unsigned int size_B = uiWB * uiHB;
-    unsigned int mem_size_B = sizeof(float) * size_B;
-    float* h_B = (float*)malloc(mem_size_B);
 
     unsigned int size_C = uiWC * uiHC;
     unsigned int mem_size_C = sizeof(float) * size_C;
 
     // initialize host memory
     randomInit(h_A, size_A);
-    randomInit(h_B, size_B);
 
     // allocate host memory for the result
-    float* h_C      = (float*) malloc(mem_size_C);
-    
-    // allocate device memory
-    float* d_A, *d_B, *d_C;
-    
-
-    cudaMalloc((void**) &d_A, mem_size_A);
-    cudaMalloc((void**) &d_B, mem_size_B);
-    cudaMalloc((void**) &d_C, mem_size_C);
-
-    // copy host memory to device
-    cudaMemcpy(d_A, h_A, mem_size_A, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B, mem_size_B, cudaMemcpyHostToDevice);
-    
-    // setup execution parameters
-    dim3 threads(block_size, block_size);
-    dim3 grid(uiWC / threads.x, uiHC / threads.y);
+    float* h_C = (float*) malloc(mem_size_C);
 
     //Print information about test
-    printf("Calculating: C = A x B, %d times\n", nIter);
-    printf("Matrix A is :  %d x %d\n", uiWA, uiHA);
-    printf("Matrix B is :  %d x %d\n", uiWB, uiHB);
-    printf("Matrix C is :  %d x %d\n\n", uiWC, uiHC);
+    printf("Calculating: C = A x A, %d times on CPU\n", nIter);
+    printf("Matrix size is :  %d x %d\n\n", uiWA, uiHA);
 
-
-    //Performs warmup operation using matrixMul CUDA kernel
-    if (block_size == 16) {
-        matrixMul<16><<< grid, threads >>>(d_C, d_A, d_B, uiWA, uiWB);
-    } else {
-        matrixMul<32><<< grid, threads >>>(d_C, d_A, d_B, uiWA, uiWB);
-    }
-    cudaDeviceSynchronize();
+    float* reference = (float*)malloc(mem_size_C);
 
     double start_time = getTime_sec();
 
     for (int j = 0; j < nIter; j++) {
-        if (block_size == 16) {
-            matrixMul<16><<< grid, threads >>>(d_C, d_A, d_B, uiWA, uiWB);
-        } else {
-            matrixMul<32><<< grid, threads >>>(d_C, d_A, d_B, uiWA, uiWB);
-        }
+        computeGold(reference, h_A, h_A, uiHA, uiWA, uiWB);
     }
     // check if kernel execution generated and error
 
-    cudaDeviceSynchronize();
-    // calculate timing stuff
     double finish_time = getTime_sec();
 
+    // calculate timing stuff
     double total_sec = finish_time-start_time;
     double dSeconds = total_sec/((double)nIter);
     double dNumOps = 2.0 * (double)uiWA * (double)uiHA * (double)uiWB;
@@ -210,36 +165,29 @@ int main(int argc, char** argv)
 
     printf("Time Informarion:\n");
     printf("   Total Time:   %.6f sec\n", total_sec);
-    printf("   Time Per Run: %.6f sec\n", dSeconds);
-    printf("   Gflops:       %.2f G Ops/sec\n\n", gflops);
+    printf("   Gflops:       %.4f G Ops/sec\n\n\n", gflops);
 
 
     // copy result from device to host
-    cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost);
+    //cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost);
 
     // compute reference solution    
-    float* reference = (float*)malloc(mem_size_C);
-    computeGold(reference, h_A, h_B, uiHA, uiWA, uiWB);
+    //
+    //computeGold(reference, h_A, h_B, uiHA, uiWA, uiWB);
 
     // check result (matrixMul)
-    printf("Comparing CUDA matrixMul & Host results\n");
-    bool resCUDA = check(reference, h_C, size_C, 1.0e-6f); //not sure if I can use this
-    if (resCUDA != true) 
-    {
-        printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-3f);
-    }
-    printf("CUDA matrixMul compares %s\n\n", (true == resCUDA) ? "OK" : "FAIL");
+    // printf("Comparing CUDA matrixMul & Host results\n");
+    // bool resCUDA = check(reference, h_C, size_C, 1.0e-6f); //not sure if I can use this
+    // if (resCUDA != true) 
+    //{
+    //    printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-3f);
+    // }
+    // printf("CUDA matrixMul compares %s\n\n", (true == resCUDA) ? "OK" : "FAIL");
 
     // clean up memory
     free(h_A);
-    free(h_B);
     free(h_C);
     free(reference);
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
-
-    cudaDeviceReset();
 }
 
 

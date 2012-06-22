@@ -1,0 +1,309 @@
+
+
+//This takes command line arguements for:
+//     number of runs
+//     matrix side length
+
+// Utilities and system includes
+#include <stdio.h>
+#include <cuda_runtime.h>
+#include <sys/time.h>
+
+#include "matrixMul.h"
+
+////////////////////////////////////////////////////////////////////////////////
+//! Matrix multiplication on the device: C = A * B
+//! wA is A's width and wB is B's width
+////////////////////////////////////////////////////////////////////////////////
+template <int BLOCK_SIZE> __global__ void
+matrixMul( float* C, float* A, float* B, int wA, int wB)
+{
+    // Block index
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+
+    // Thread index
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    // Index of the first sub-matrix of A processed by the block
+    int aBegin = wA * BLOCK_SIZE * by;
+
+    // Index of the last sub-matrix of A processed by the block
+    int aEnd   = aBegin + wA - 1;
+
+    // Step size used to iterate through the sub-matrices of A
+    int aStep  = BLOCK_SIZE;
+
+    // Index of the first sub-matrix of B processed by the block
+    int bBegin = BLOCK_SIZE * bx;
+
+    // Step size used to iterate through the sub-matrices of B
+    int bStep  = BLOCK_SIZE * wB;
+
+    // Csub is used to store the element of the block sub-matrix
+    // that is computed by the thread
+    float Csub = 0;
+
+    // Loop over all the sub-matrices of A and B
+    // required to compute the block sub-matrix
+    for (int a = aBegin, b = bBegin;
+             a <= aEnd;
+             a += aStep, b += bStep) {
+
+        // Declaration of the shared memory array As used to
+        // store the sub-matrix of A
+        __shared__ float As[BLOCK_SIZE][BLOCK_SIZE];
+
+        // Declaration of the shared memory array Bs used to
+        // store the sub-matrix of B
+        __shared__ float Bs[BLOCK_SIZE][BLOCK_SIZE];
+
+        // Load the matrices from device memory
+        // to shared memory; each thread loads
+        // one element of each matrix
+        As[ty][tx] = A[a + wA * ty + tx];
+        Bs[ty][tx] = B[b + wB * ty + tx];
+
+        // Synchronize to make sure the matrices are loaded
+        __syncthreads();
+
+        // Multiply the two matrices together;
+        // each thread computes one element
+        // of the block sub-matrix
+#pragma unroll
+        for (int k = 0; k < BLOCK_SIZE; ++k)
+            Csub += As[ty][k] * Bs[k][tx];
+
+        // Synchronize to make sure that the preceding
+        // computation is done before loading two new
+        // sub-matrices of A and B in the next iteration
+        __syncthreads();
+    }
+
+    // Write the block sub-matrix to device memory;
+    // each thread writes one element
+    int c = wB * BLOCK_SIZE * by + BLOCK_SIZE * bx;
+    C[c + wB * ty + tx] = Csub;
+}
+////////////////////////////////////////////////////////////////////////////////
+//    END OF KERNEL
+////////////////////////////////////////////////////////////////////////////////
+
+struct timeval tp;
+double getTime_sec();
+void runTest(int argc, char** argv);
+void randomInit(float*, int);
+void printDiff(float*, float*, int, int, int, float);
+bool check(float*, float*, int, float);
+
+extern "C"
+void computeGold(float*, const float*, const float*, unsigned int, unsigned int, unsigned int);
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Program main
+////////////////////////////////////////////////////////////////////////////////
+
+int main(int argc, char** argv)
+{
+    int cuda_device;
+    cudaDeviceProp deviceProp;
+
+    cudaGetDevice(&cuda_device);	
+    cudaGetDeviceProperties(&deviceProp, cuda_device);
+
+    // use a larger block size for Fermi and above
+    int block_size = (deviceProp.major < 2) ? 16 : 32;
+
+	// set seed for rand()
+    srand(2006);
+
+
+    //Get command line arguements
+    int nIter = 30;
+    int size = 640;
+    if( argc>2 ){
+        nIter = atoi(argv[1]);
+        size = atoi(argv[2]);
+    }
+
+    unsigned int uiWA, uiHA, uiWB, uiHB, uiWC, uiHC;
+    uiWA = size;
+    uiHA = size;
+    uiWB = size;
+    uiHB = size;
+    uiWC = size;
+    uiHC = size;
+    
+
+    // allocate host memory for matrices A and B
+    unsigned int size_A = uiWA * uiHA;
+    unsigned int mem_size_A = sizeof(float) * size_A;
+    float* h_A = (float*)malloc(mem_size_A);
+    unsigned int size_B = uiWB * uiHB;
+    unsigned int mem_size_B = sizeof(float) * size_B;
+    float* h_B = (float*)malloc(mem_size_B);
+
+    unsigned int size_C = uiWC * uiHC;
+    unsigned int mem_size_C = sizeof(float) * size_C;
+
+    // initialize host memory
+    randomInit(h_A, size_A);
+    randomInit(h_B, size_B);
+
+    // allocate host memory for the result
+    float* h_C      = (float*) malloc(mem_size_C);
+    
+    // allocate device memory
+    float* d_A, *d_B, *d_C;
+    
+
+    cudaMalloc((void**) &d_A, mem_size_A);
+    cudaMalloc((void**) &d_B, mem_size_B);
+    cudaMalloc((void**) &d_C, mem_size_C);
+
+    // copy host memory to device
+    cudaMemcpy(d_A, h_A, mem_size_A, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, mem_size_B, cudaMemcpyHostToDevice);
+    
+    // setup execution parameters
+    dim3 threads(block_size, block_size);
+    dim3 grid(uiWC / threads.x, uiHC / threads.y);
+
+    //Print information about test
+    printf("Calculating: C = A x B, %d times\n", nIter);
+    printf("Matrix size is :  %d x %d\n\n", uiWA, uiHA);
+
+    //Performs warmup operation using matrixMul CUDA kernel
+    if (block_size == 16) {
+        matrixMul<16><<< grid, threads >>>(d_C, d_A, d_B, uiWA, uiWB);
+    } else {
+        matrixMul<32><<< grid, threads >>>(d_C, d_A, d_B, uiWA, uiWB);
+    }
+    cudaDeviceSynchronize();
+
+    double start_time = getTime_sec();
+
+    for (int j = 0; j < nIter; j++) {
+        computeGold(reference, h_A, h_B, uiHA, uiWA, uiWB);
+    }
+    // check if kernel execution generated and error
+
+    cudaError cuda_error = cudaDeviceSynchronize();
+    double finish_time = getTime_sec();
+
+
+    if(cuda_error==cudaSuccess){
+        //printf( "  Running the concurrentKernels was a success\n");
+    }else{
+        printf("CUDA Error: %s\n", cudaGetErrorString(cuda_error));
+        
+        return 1;
+    }
+
+    // calculate timing stuff
+
+    double total_sec = finish_time-start_time;
+    double dSeconds = total_sec/((double)nIter);
+    double dNumOps = 2.0 * (double)uiWA * (double)uiHA * (double)uiWB;
+    double gflops = 1.0e-9 * dNumOps/dSeconds;
+
+    printf("Time Informarion:\n");
+    printf("   Total Time:   %.6f sec\n", total_sec);
+    printf("   Gflops:       %.2f G Ops/sec\n\n\n", gflops);
+
+
+    // copy result from device to host
+    //cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost);
+
+    // compute reference solution    
+    //float* reference = (float*)malloc(mem_size_C);
+    //computeGold(reference, h_A, h_B, uiHA, uiWA, uiWB);
+
+    // check result (matrixMul)
+    // printf("Comparing CUDA matrixMul & Host results\n");
+    // bool resCUDA = check(reference, h_C, size_C, 1.0e-6f); //not sure if I can use this
+    // if (resCUDA != true) 
+    //{
+    //    printDiff(reference, h_C, uiWC, uiHC, 100, 1.0e-3f);
+    // }
+    // printf("CUDA matrixMul compares %s\n\n", (true == resCUDA) ? "OK" : "FAIL");
+
+    // clean up memory
+    free(h_A);
+    free(h_B);
+    free(h_C);
+    //    free(reference);
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+    cudaDeviceReset();
+}
+
+
+double getTime_sec() {
+   gettimeofday(&tp, NULL);
+   return static_cast<double>(tp.tv_sec)
+           + static_cast<double>(tp.tv_usec) / 1E6;
+}
+
+// Allocates a matrix with random float entries.
+void randomInit(float* data, int size)
+{
+    for (int i = 0; i < size; ++i)
+        data[i] = rand() / (float)RAND_MAX;
+}
+
+void computeGold(float* C, const float* A, const float* B, unsigned int hA, unsigned int wA, unsigned int wB)
+{
+    for (unsigned int i = 0; i < hA; ++i)
+        for (unsigned int j = 0; j < wB; ++j) {
+            double sum = 0;
+            for (unsigned int k = 0; k < wA; ++k) {
+                double a = A[i * wA + k];
+                double b = B[k * wB + j];
+                sum += a * b;
+            }
+            C[i * wB + j] = (float)sum;
+        }
+}
+
+bool check(float *data1, float *data2, int size, float fListTol)
+{
+    int k;
+    for (k = 0; k < size; k++){ 
+        float fDiff = fabs(data1[k] - data2[k]);
+        if (fDiff > fListTol) return false;
+    }
+    return true;
+}
+
+void printDiff(float *data1, float *data2, int width, int height, int iListLength, float fListTol)
+{
+    //printf("Listing first %d Differences > %.6f...\n", iListLength, fListTol);
+    int i,j,k;
+    int error_count=0;
+    for (j = 0; j < height; j++) 
+    {
+        if (error_count < iListLength)
+        {
+            //printf("\n  Row %d:\n", j);
+        }
+        for (i = 0; i < width; i++) 
+        {
+            k = j * width + i;
+            float fDiff = fabs(data1[k] - data2[k]);
+            if (fDiff > fListTol) 
+            {                
+                if (error_count < iListLength)
+                {
+                    //printf("    Loc(%d,%d)\tCPU=%.5f\tGPU=%.5f\tDiff=%.6f\n", i, j, data1[k], data2[k], fDiff);
+                }
+                error_count++;
+            }
+        }
+    }
+    printf(" \n  Total Errors = %d  with tolerance of %.6f\n\n", error_count, fListTol);
+}
